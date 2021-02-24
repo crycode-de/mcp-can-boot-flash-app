@@ -1,0 +1,4 @@
+.eslintrc.*
+.github
+*.tgz
+*.log
