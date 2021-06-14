@@ -16,7 +16,7 @@ More information about the bootloader are available in the official repository: 
 
 ## Requirements
 
-* Node.js version 10.12.x or higher.
+* Node.js version 12.x or higher.
 
 * The system where the flash-app is run needs a CAN interface to which the target MCU is connected.
 
@@ -30,7 +30,7 @@ No need to install: Just run the flash-app using `npx` (this will take a moment)
 npx mcp-can-boot-flash-app [...]
 ```
 
-Or install it globally and run it if you need it more often:
+Or install it globally and run it if you need it more often (recommended):
 
 ```
 npm install -g mcp-can-boot-flash-app

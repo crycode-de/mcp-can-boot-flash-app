@@ -1,0 +1,16 @@
+# MCP-CAN-Boot Flash-App Changelog
+
+## v2.0.0 2021-06-14
+
+### ⚠ BREAKING CHANGES
+
+* Drop Node.js 10 support - Required Node.js version is now 12.x
+* Updated dependencies
+
+## v1.1.1 2021-02-24
+
+* Moved repository to GitHub
+
+## v1.1.0 2020-09-05
+
+* Added parameter for mcu reset
