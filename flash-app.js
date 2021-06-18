@@ -127,6 +127,11 @@ class FlashApp {
         coerce: this.parseNumber
       })
 
+      .option('sff', {
+        description: 'Use Standad Frame Format (SFF) instead of the default Extended Frame Format (EFF) for the CAN-IDs',
+        type: 'boolean'
+      })
+
       .help()
       .version(false)
       .alias('help', 'h')
@@ -252,7 +257,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             this.flashStartTs = Date.now();
             this.can.send({
               id: this.args.canIdRemote,
-              ext: true,
+              ext: !this.args.sff,
               rtr: false,
               data: Buffer.from([
                 this.mcuId[0],
@@ -274,7 +279,7 @@ https://github.com/crycode-de/mcp-can-boot`)
               this.state = STATE_READING;
               this.can.send({
                 id: this.args.canIdRemote,
-                ext: true,
+                ext: !this.args.sff,
                 rtr: false,
                 data: Buffer.from([
                   this.mcuId[0],
@@ -291,7 +296,7 @@ https://github.com/crycode-de/mcp-can-boot`)
               console.log('Got flash ready message, erasing flash ...');
               this.can.send({
                 id: this.args.canIdRemote,
-                ext: true,
+                ext: !this.args.sff,
                 rtr: false,
                 data: Buffer.from([
                   this.mcuId[0],
@@ -411,7 +416,7 @@ https://github.com/crycode-de/mcp-can-boot`)
               // request next address
               this.can.send({
                 id: this.args.canIdRemote,
-                ext: true,
+                ext: !this.args.sff,
                 rtr: false,
                 data: Buffer.from([
                   this.mcuId[0],
@@ -477,7 +482,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     // request next address
     this.can.send({
       id: this.args.canIdRemote,
-      ext: true,
+      ext: !this.args.sff,
       rtr: false,
       data: Buffer.from([
         this.mcuId[0],
@@ -518,7 +523,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     console.log('Starting the app on the MCU ...');
     this.can.send({
       id: this.args.canIdRemote,
-      ext: true,
+      ext: !this.args.sff,
       rtr: false,
       data: Buffer.from([
         this.mcuId[0],
@@ -548,7 +553,7 @@ https://github.com/crycode-de/mcp-can-boot`)
           this.state = STATE_READING;
           this.can.send({
             id: this.args.canIdRemote,
-            ext: true,
+            ext: !this.args.sff,
             rtr: false,
             data: Buffer.from([
               this.mcuId[0],
@@ -566,7 +571,7 @@ https://github.com/crycode-de/mcp-can-boot`)
           // we don't want to verify... send flash done to start the app
           this.can.send({
             id: this.args.canIdRemote,
-            ext: true,
+            ext: !this.args.sff,
             rtr: false,
             data: Buffer.from([
               this.mcuId[0],
@@ -594,7 +599,7 @@ https://github.com/crycode-de/mcp-can-boot`)
       console.log(`Setting flash address to ${this.hexString(this.curAddr, 4)} ...`);
       this.can.send({
         id: this.args.canIdRemote,
-        ext: true,
+        ext: !this.args.sff,
         rtr: false,
         data: Buffer.from([
           this.mcuId[0],
@@ -640,7 +645,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     console.log(`Sending flash data ${this.hexString(this.curAddr, 4)} ...`);
     this.can.send({
       id: this.args.canIdRemote,
-      ext: true,
+      ext: !this.args.sff,
       rtr: false,
       data: data
     });

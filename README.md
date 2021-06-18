@@ -56,6 +56,8 @@ mcp-can-boot-flash-app [...]
                                                 [string] [default: 0x1FFFFF01]
 --can-id-remote  CAN-ID for messages from remote to MCU
                                                 [string] [default: 0x1FFFFF02]
+--sff            Use Standad Frame Format (SFF) instead of the default
+                 Extended Frame Format (EFF) for the CAN-IDs         [boolean]
 --help, -h       Show help                                           [boolean]
 ```
 

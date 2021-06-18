@@ -1,5 +1,10 @@
 # MCP-CAN-Boot Flash-App Changelog
 
+## v2.1.0 2021-06-18
+
+* Added support for Standard Frame Format (SFF) CAN-IDs  
+  New argument: `-sff`
+
 ## v2.0.0 2021-06-14
 
 ### ⚠ BREAKING CHANGES
