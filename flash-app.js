@@ -25,7 +25,10 @@ const CAN_DATA_BYTE_LEN_AND_ADDR = 3;
 const CAN_ID_MCU_TO_REMOTE_DEFAULT = 0x1FFFFF01;
 const CAN_ID_REMOTE_TO_MCU_DEFAULT = 0x1FFFFF02;
 
-const CMD_BOOTLOADER_START         = 0b00000010;
+const CAN_PING_INTERVAL_DEFAULT = 75;
+
+const CMD_PING                     = 0b00000000; // remote -> mcu
+const CMD_BOOTLOADER_START         = 0b00000010; // mcu -> remote
 const CMD_FLASH_INIT               = 0b00000110; // remote -> mcu
 const CMD_FLASH_READY              = 0b00000100; // mcu -> remote
 const CMD_FLASH_SET_ADDRESS        = 0b00001010; // remote -> mcu
@@ -132,6 +135,11 @@ class FlashApp {
         type: 'boolean'
       })
 
+      .option('ping', {
+        description: 'Send a ping in the given interval (ms) to keep the bus active (should be used if the bootloader uses bitrate detection)',
+        type: 'number'
+      })
+
       .help()
       .version(false)
       .alias('help', 'h')
@@ -153,6 +161,11 @@ https://github.com/crycode-de/mcp-can-boot`)
 
     this.doVerify = this.doRead ? false : !this.args.V; // if we are just reading, we cannot verify
 
+    // det default time for ping, if ping is set but without a time
+    if (Object.prototype.hasOwnProperty.call(this.args, 'ping') && typeof this.args.ping !== 'number') {
+      this.args.ping = CAN_PING_INTERVAL_DEFAULT;
+    }
+
     this.state = STATE_INIT;
     this.deviceSignature = this.getDeviceSignature(this.args.partno);
 
@@ -160,7 +173,7 @@ https://github.com/crycode-de/mcp-can-boot`)
       // load from file if we are not only reading the flash
       if (!fs.existsSync(this.args.file)) {
         console.log(`Input file ${this.args.file} does not exist!`);
-        process.exit(1);
+        this.exit(1);
       }
       const intelHexString = fs.readFileSync(this.args.file, 'latin1');
       this.memMap = MemoryMap.fromHex(intelHexString);
@@ -172,7 +185,7 @@ https://github.com/crycode-de/mcp-can-boot`)
       // check if output file exists
       if (this.args.file !== '-' && fs.existsSync(this.args.file)) {
         console.log(`Output file ${this.args.file} already exists!`);
-        process.exit(1);
+        this.exit(1);
       }
     }
 
@@ -195,14 +208,14 @@ https://github.com/crycode-de/mcp-can-boot`)
       const canId = parseInt(canIdStr, 16);
       if ((canIdStr.length !== 3 && canIdStr.length !== 8) || isNaN(canId)) {
         console.log(`Reset message format error!\nThe can_id is not valid. A three digits standard frame or eight digits extended frame hex id must be provided.`);
-        process.exit(1);
+        this.exit(1);
       }
 
       const data = dataStr ? dataStr.match(/../g).map((d) => {
         const n = parseInt(d, 16);
         if (isNaN(n)) {
           console.log(`Reset message format error!\nThe data bytes must be provided as hex numbers.`);
-          process.exit(1);
+          this.exit(1);
         }
         return n;
       }) : [];
@@ -215,6 +228,28 @@ https://github.com/crycode-de/mcp-can-boot`)
       });
 
       console.log(`Reset message send to the MCU.`);
+    }
+
+    // send ping messages?
+    if (this.args.ping) {
+      console.log(`Sending a ping message every ${this.args.pings} ms.`);
+      this.pingInterval = setInterval(() => {
+        this.can.send({
+          id: this.args.canIdRemote,
+          ext: !this.args.sff,
+          rtr: false,
+          data: Buffer.from([
+            this.mcuId[0],
+            this.mcuId[1],
+            CMD_PING,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00
+          ])
+        });
+      }, this.args.ping);
     }
 
     console.log(`Waiting for bootloader start message for MCU ID ${this.hexString(this.args.mcuid, 4)} ...`);
@@ -245,7 +280,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             // check bootloader version
             if (msg.data[7] !== BOOTLOADER_CMD_VERSION) {
               if (this.args.F) {
-                console.warn(`WARNING: Bootloader command version of MCU ${this.hexString(msg.data[7])} does not match the version expected by this flash app ${this.hexString(BOOTLOADER_CMD_VERSION)}. You forced flashing anyways. This may lead to an stupid result...`);
+                console.warn(`WARNING: Bootloader command version of MCU ${this.hexString(msg.data[7])} does not match the version expected by this flash app ${this.hexString(BOOTLOADER_CMD_VERSION)}. You forced flashing anyways. This may lead to a stupid result...`);
               } else {
                 console.warn(`ERROR: Bootloader command version of MCU ${this.hexString(msg.data[7])} does not match the version expected by this flash app ${this.hexString(BOOTLOADER_CMD_VERSION)}. To force flashing use the -F argument.`);
                 return;
@@ -254,6 +289,11 @@ https://github.com/crycode-de/mcp-can-boot`)
 
             // enter flash mode
             console.log('Got bootloader start, entering flash mode ...');
+            if (this.pingInterval) {
+              clearInterval(this.pingInterval);
+              this.pingInterval = undefined;
+              console.log(`Stopped sending of ping messages.`);
+            }
             this.flashStartTs = Date.now();
             this.can.send({
               id: this.args.canIdRemote,
@@ -348,7 +388,7 @@ https://github.com/crycode-de/mcp-can-boot`)
           case CMD_START_APP:
             console.log(`Flash done in ${(Date.now() - this.flashStartTs)} ms.`);
             console.log('MCU is starting the app. :-)');
-            process.exit(0);
+            this.exit(0);
             break;
 
           default:
@@ -450,7 +490,7 @@ https://github.com/crycode-de/mcp-can-boot`)
 
           case CMD_START_APP:
             console.log('MCU ist starting the app. :-)');
-            process.exit(0);
+            this.exit(0);
             break;
 
           default:
@@ -709,6 +749,23 @@ https://github.com/crycode-de/mcp-can-boot`)
       default:
         return [0, 0, 0];
     }
+  }
+
+  /**
+   * Do a clean exit of the flash app.
+   */
+  exit (code) {
+    try {
+      if (this.pingInterval) {
+        clearInterval(this.pingInterval);
+      }
+      if (this.can) {
+        this.can.stop();
+      }
+    } catch (e) {
+      console.warn('Error at exit cleanup:', e);
+    }
+    process.exit(code);
   }
 }
 

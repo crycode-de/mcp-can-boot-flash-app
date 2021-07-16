@@ -58,6 +58,9 @@ mcp-can-boot-flash-app [...]
                                                 [string] [default: 0x1FFFFF02]
 --sff            Use Standad Frame Format (SFF) instead of the default
                  Extended Frame Format (EFF) for the CAN-IDs         [boolean]
+--ping           Send a ping in the given interval (ms) to keep the bus active
+                 (should be used if the bootloader uses bitrate detection)
+                                                                      [number]
 --help, -h       Show help                                           [boolean]
 ```
 
@@ -66,6 +69,7 @@ Examples:
 ```
 npx mcp-can-boot-flash-app -f firmware.hex -p m1284p -m 0x0042
 npx mcp-can-boot-flash-app -f firmware.hex -p m1284p -m 0x0042 --reset 020040FF#4201FA
+npx mcp-can-boot-flash-app -f firmware.hex -p m1284p -m 0x0042 --reset 020040FF#4201FA --ping 75
 npx mcp-can-boot-flash-app -r -f - -p m328p -m 0x0042
 ```
 
