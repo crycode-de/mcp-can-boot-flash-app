@@ -334,7 +334,7 @@ https://github.com/crycode-de/mcp-can-boot`)
 
           case CMD_FLASH_ADDRESS_ERROR:
             console.log('Flash address error!');
-            console.log('Maybe the hex file is not for this MCU type?');
+            console.log('Maybe the hex file is not for this MCU type or the application is too large to be used together with the bootloader?');
             break;
 
           case CMD_FLASH_READY:
