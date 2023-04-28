@@ -14,6 +14,7 @@ const fs = require('fs');
 const yargs = require('yargs');
 const socketcan = require('socketcan');
 const MemoryMap = require('nrf-intel-hex');
+const cliProgress = require('cli-progress');
 
 const BOOTLOADER_CMD_VERSION = 0x01;
 
@@ -43,6 +44,8 @@ const CMD_START_APP                = 0b10000000; // mcu <-> remote
 const STATE_INIT     = 0;
 const STATE_FLASHING = 1;
 const STATE_READING  = 2;
+
+const BOOTLOADER_SIZE_BYTES  = 4096;
 
 class FlashApp {
 
@@ -146,6 +149,9 @@ https://github.com/crycode-de/mcp-can-boot`)
       .example('$0 -r -f - -p m328p -m 0x0042')
       .argv;
 
+    // create a new progress bar instance and use legacy theme
+    this.progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.legacy);
+
     this.mcuId = [(this.args.mcuid >> 8) & 0xFF, this.args.mcuid & 0xFF];
 
     this.doErase = !!this.args.e;
@@ -154,7 +160,9 @@ https://github.com/crycode-de/mcp-can-boot`)
     this.doVerify = this.doRead ? false : !this.args.V; // if we are just reading, we cannot verify
 
     this.state = STATE_INIT;
-    this.deviceSignature = this.getDeviceSignature(this.args.partno);
+    this.deviceSignature = null;
+    this.deviceFlashSize = 0;
+    this.loadDeviceInfo(this.args.partno);
 
     if (!this.doRead) {
       // load from file if we are not only reading the flash
@@ -179,6 +187,11 @@ https://github.com/crycode-de/mcp-can-boot`)
     this.memMapKeys = this.memMap.keys(); // load all keys of the memory map
     this.memMapCurrentKey = null; // set current key to null to begin new key on flash ready
     this.memMapCurrentDataIdx = 0;
+    this.memMapTotalBytes = 0;
+    // compute input file size in bytes
+    for (const block of this.memMap.values()) {
+      this.memMapTotalBytes += block.length;
+    }
 
     this.curAddr = 0x0000; // current flash address
 
@@ -276,6 +289,12 @@ https://github.com/crycode-de/mcp-can-boot`)
             // flash is ready for first data, read or erase...
             if (this.doRead) {
               console.log('Got flash ready message, reading flash ...');
+              // determine read size (default to full progmem size)
+              var readSizeBytes = this.deviceFlashSize - BOOTLOADER_SIZE_BYTES;
+              if (this.args.r) {
+                readSizeBytes = this.args.r;// user specified max read address
+              }
+              this.progressBar.start(readSizeBytes, 0);
               this.state = STATE_READING;
               this.can.send({
                 id: this.args.canIdRemote,
@@ -340,6 +359,7 @@ https://github.com/crycode-de/mcp-can-boot`)
           case CMD_FLASH_READY:
             byteCount = (msg.data[CAN_DATA_BYTE_LEN_AND_ADDR] >> 5);
             //console.log(`${byteCount} bytes flashed`);
+            this.progressBar.increment(byteCount);
             this.curAddr += byteCount;
             this.memMapCurrentDataIdx += byteCount;
             this.onFlashReady(msg.data);
@@ -362,6 +382,7 @@ https://github.com/crycode-de/mcp-can-boot`)
           case CMD_FLASH_DONE_VERIFY:
             // start reading flash to verify
             console.log('Start reading flash to verify ...');
+            this.progressBar.start(this.memMapTotalBytes, 0);
             // TODO
             this.memMapKeys = this.memMap.keys(); // load all keys of the memory map
             this.memMapCurrentKey = null; // set current key to null to begin new key on flash read
@@ -382,7 +403,8 @@ https://github.com/crycode-de/mcp-can-boot`)
               return;
             }
 
-            console.log(`Got flash data for ${this.hexString(this.curAddr, 4)} ...`);
+            // console.log(`Got flash data for ${this.hexString(this.curAddr, 4)} ...`);
+            this.progressBar.increment(byteCount);
 
             if (this.doVerify) {
               // verify flash
@@ -449,7 +471,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             break;
 
           case CMD_START_APP:
-            console.log('MCU ist starting the app. :-)');
+            console.log('MCU is starting the app. :-)');
             process.exit(0);
             break;
 
@@ -468,6 +490,7 @@ https://github.com/crycode-de/mcp-can-boot`)
       const key = this.memMapKeys.next();
       if (key.done) {
         // all keys done... verify complete
+        this.progressBar.stop();
         console.log(`Flash and verify done in ${(Date.now() - this.flashStartTs)} ms.`);
         this.sendStartApp();
         return;
@@ -498,6 +521,8 @@ https://github.com/crycode-de/mcp-can-boot`)
   }
 
   readDone () {
+    this.progressBar.stop();
+
     // create memory map
     const memMap = new MemoryMap();
     memMap.set(0x0000, Uint8Array.from(this.readDataArr));
@@ -547,6 +572,7 @@ https://github.com/crycode-de/mcp-can-boot`)
       const key = this.memMapKeys.next();
       if (key.done) {
         // all keys done... flash complete
+        this.progressBar.stop();
         console.log('All data transmitted. Finalizing ...');
         if (this.doVerify) {
           // we want to verify... send flash done verify and set own state to read
@@ -586,6 +612,11 @@ https://github.com/crycode-de/mcp-can-boot`)
           });
         }
         return;
+      }
+
+      // initialize progress bar on first block
+      if (this.memMapCurrentKey == null) {
+        this.progressBar.start(this.memMapTotalBytes, 0);
       }
 
       // apply new current address and set data index to 0
@@ -642,7 +673,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     data[CAN_DATA_BYTE_LEN_AND_ADDR] = (dataBytes << 5) | (this.curAddr & 0b00011111);
 
     // send data
-    console.log(`Sending flash data ${this.hexString(this.curAddr, 4)} ...`);
+    // console.log(`Sending flash data ${this.hexString(this.curAddr, 4)} ...`);
     this.can.send({
       id: this.args.canIdRemote,
       ext: !this.args.sff,
@@ -671,43 +702,60 @@ https://github.com/crycode-de/mcp-can-boot`)
     return val;
   }
 
-  getDeviceSignature (partno) {
+  loadDeviceInfo (partno) {
     partno = partno.toLowerCase();
     switch (partno) {
       case 'm32':
       case 'mega32':
       case 'atmega32':
-        return [0x1E, 0x95, 0x02];
+        this.deviceSignature = [0x1E, 0x95, 0x02];
+        this.deviceFlashSize = 32 * 1024;
+        break;
       case 'm328':
       case 'mega328':
       case 'atmega328':
-        return [0x1E, 0x95, 0x14];
+        this.deviceSignature = [0x1E, 0x95, 0x14];
+        this.deviceFlashSize = 32 * 1024;
+        break;
       case 'm328p':
       case 'mega328p':
       case 'atmega328p':
-        return [0x1E, 0x95, 0x0F];
+        this.deviceSignature = [0x1E, 0x95, 0x0F];
+        this.deviceFlashSize = 32 * 1024;
+        break;
       case 'm64':
       case 'mega64':
       case 'atmega64':
-        return [0x1E, 0x96, 0x02];
+        this.deviceSignature = [0x1E, 0x96, 0x02];
+        this.deviceFlashSize = 64 * 1024;
+        break;
       case 'm644p':
       case 'mega644p':
       case 'atmega644p':
-        return [0x1E, 0x96, 0x0A];
+        this.deviceSignature = [0x1E, 0x96, 0x0A];
+        this.deviceFlashSize = 64 * 1024;
+        break;
       case 'm128':
       case 'mega128':
       case 'atmega128':
-        return [0x1E, 0x97, 0x02];
+        this.deviceSignature = [0x1E, 0x97, 0x02];
+        this.deviceFlashSize = 128 * 1024;
+        break;
       case 'm1284p':
       case 'mega1284p':
       case 'atmega1284p':
-        return [0x1E, 0x97, 0x05];
+        this.deviceSignature = [0x1E, 0x97, 0x05];
+        this.deviceFlashSize = 128 * 1024;
+        break;
       case 'm2560':
       case 'mega2560':
       case 'atmega2560':
-        return [0x1E, 0x98, 0x01];
+        this.deviceSignature = [0x1E, 0x98, 0x01];
+        this.deviceFlashSize = 256 * 1024;
+        break;
       default:
-        return [0, 0, 0];
+        this.deviceSignature = [0, 0, 0];
+        this.deviceFlashSize = 0 * 1024;
     }
   }
 }
