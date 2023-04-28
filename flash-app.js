@@ -135,6 +135,12 @@ class FlashApp {
         type: 'boolean'
       })
 
+      .option('verbose', {
+        alias: 'v',
+        description: 'enable verbose logging output',
+        type: 'boolean'
+      })
+
       .help()
       .version(false)
       .alias('help', 'h')
@@ -151,6 +157,7 @@ https://github.com/crycode-de/mcp-can-boot`)
 
     // create a new progress bar instance and use legacy theme
     this.progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.legacy);
+    this.doProgress = !this.args.verbose;
 
     this.mcuId = [(this.args.mcuid >> 8) & 0xFF, this.args.mcuid & 0xFF];
 
@@ -294,7 +301,7 @@ https://github.com/crycode-de/mcp-can-boot`)
               if (this.args.r) {
                 readSizeBytes = this.args.r;// user specified max read address
               }
-              this.progressBar.start(readSizeBytes, 0);
+              this.progressStart(readSizeBytes, 0);
               this.state = STATE_READING;
               this.can.send({
                 id: this.args.canIdRemote,
@@ -358,8 +365,8 @@ https://github.com/crycode-de/mcp-can-boot`)
 
           case CMD_FLASH_READY:
             byteCount = (msg.data[CAN_DATA_BYTE_LEN_AND_ADDR] >> 5);
-            //console.log(`${byteCount} bytes flashed`);
-            this.progressBar.increment(byteCount);
+            // console.log(`${byteCount} bytes flashed`);
+            this.progressIncrement(byteCount);
             this.curAddr += byteCount;
             this.memMapCurrentDataIdx += byteCount;
             this.onFlashReady(msg.data);
@@ -382,7 +389,7 @@ https://github.com/crycode-de/mcp-can-boot`)
           case CMD_FLASH_DONE_VERIFY:
             // start reading flash to verify
             console.log('Start reading flash to verify ...');
-            this.progressBar.start(this.memMapTotalBytes, 0);
+            this.progressStart(this.memMapTotalBytes, 0);
             // TODO
             this.memMapKeys = this.memMap.keys(); // load all keys of the memory map
             this.memMapCurrentKey = null; // set current key to null to begin new key on flash read
@@ -403,8 +410,10 @@ https://github.com/crycode-de/mcp-can-boot`)
               return;
             }
 
-            // console.log(`Got flash data for ${this.hexString(this.curAddr, 4)} ...`);
-            this.progressBar.increment(byteCount);
+            if (this.args.verbose) {
+              console.log(`Got flash data for ${this.hexString(this.curAddr, 4)} ...`);
+            }
+            this.progressIncrement(byteCount);
 
             if (this.doVerify) {
               // verify flash
@@ -490,7 +499,7 @@ https://github.com/crycode-de/mcp-can-boot`)
       const key = this.memMapKeys.next();
       if (key.done) {
         // all keys done... verify complete
-        this.progressBar.stop();
+        this.progressStop();
         console.log(`Flash and verify done in ${(Date.now() - this.flashStartTs)} ms.`);
         this.sendStartApp();
         return;
@@ -521,7 +530,7 @@ https://github.com/crycode-de/mcp-can-boot`)
   }
 
   readDone () {
-    this.progressBar.stop();
+    this.progressStop();
 
     // create memory map
     const memMap = new MemoryMap();
@@ -572,7 +581,7 @@ https://github.com/crycode-de/mcp-can-boot`)
       const key = this.memMapKeys.next();
       if (key.done) {
         // all keys done... flash complete
-        this.progressBar.stop();
+        this.progressStop();
         console.log('All data transmitted. Finalizing ...');
         if (this.doVerify) {
           // we want to verify... send flash done verify and set own state to read
@@ -616,7 +625,7 @@ https://github.com/crycode-de/mcp-can-boot`)
 
       // initialize progress bar on first block
       if (this.memMapCurrentKey == null) {
-        this.progressBar.start(this.memMapTotalBytes, 0);
+        this.progressStart(this.memMapTotalBytes, 0);
       }
 
       // apply new current address and set data index to 0
@@ -673,7 +682,9 @@ https://github.com/crycode-de/mcp-can-boot`)
     data[CAN_DATA_BYTE_LEN_AND_ADDR] = (dataBytes << 5) | (this.curAddr & 0b00011111);
 
     // send data
-    // console.log(`Sending flash data ${this.hexString(this.curAddr, 4)} ...`);
+    if (this.args.verbose) {
+      console.log(`Sending flash data ${this.hexString(this.curAddr, 4)} ...`);
+    }
     this.can.send({
       id: this.args.canIdRemote,
       ext: !this.args.sff,
@@ -700,6 +711,24 @@ https://github.com/crycode-de/mcp-can-boot`)
       val = parseInt(val, val.startsWith('0x') ? 16 : 10);
     }
     return val;
+  }
+
+  progressStart(total, startValue) {
+    if (this.doProgress) {
+      this.progressBar.start(total, startValue);
+    }
+  }
+
+  progressIncrement(incr = 1) {
+    if (this.doProgress) {
+      this.progressBar.increment(incr);
+    }
+  }
+
+  progressStop() {
+    if (this.doProgress) {
+      this.progressBar.stop();
+    }
   }
 
   loadDeviceInfo (partno) {
