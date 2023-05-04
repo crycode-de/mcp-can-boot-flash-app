@@ -6,7 +6,7 @@
  * Flash application for MCP-CAN-Boot, a CAN bus bootloader for
  * AVR microcontrollers attached to an MCP2515 CAN controller.
  *
- * Copyright (C) 2020-2021 Peter Müller <peter@crycode.de> (https://crycode.de)
+ * Copyright (C) 2020-2023 Peter Müller <peter@crycode.de> (https://crycode.de)
  * License: CC BY-NC-SA 4.0
  */
 
@@ -135,7 +135,7 @@ class FlashApp {
 
       .option('verbose', {
         alias: 'v',
-        description: 'enable verbose logging output',
+        description: 'Enable verbose logging output',
         type: 'boolean'
       })
 
@@ -330,7 +330,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             if (this.doRead) {
               // get FLASHEND_BL from error response (last address of program space).
               // use it to recover the size of the program/bootloader sections.
-              const flashendBL = 
+              const flashendBL =
                 (msg.data[4] << 24) |
                 (msg.data[5] << 16) |
                 (msg.data[6] << 8) |

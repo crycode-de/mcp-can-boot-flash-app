@@ -1,5 +1,11 @@
 # MCP-CAN-Boot Flash-App Changelog
 
+## WIP
+
+* Added progress bars
+* Added verbose option
+* Updated dependencies
+
 ## v2.1.1 2022-07-05
 
 * Updated error message when the hex file was too big

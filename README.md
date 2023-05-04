@@ -40,25 +40,26 @@ mcp-can-boot-flash-app [...]
 ## Flash-App parameters
 
 ```
---file, -f       Hex file to flash                         [string] [required]
---iface, -i      CAN interface to use               [string] [default: "can0"]
---partno, -p     Specific AVR device like in avrdude       [string] [required]
---mcuid, -m      ID of the MCU bootloader                  [string] [required]
--e               Erase whole flash before flashing new data          [boolean]
--V               Do not verify                                       [boolean]
--r               Read flash and save to given file (no flashing!), optional
-                 with maximum address to read until                   [string]
--F               Force flashing, even if the bootloader version missmatched
-                                                                     [boolean]
---reset, -R      CAN message to send on startup to reset the MCU
-                 (<can_id>#{hex_data})                                [string]
---can-id-mcu     CAN-ID for messages from MCU to remote
-                                                [string] [default: 0x1FFFFF01]
---can-id-remote  CAN-ID for messages from remote to MCU
-                                                [string] [default: 0x1FFFFF02]
---sff            Use Standad Frame Format (SFF) instead of the default
-                 Extended Frame Format (EFF) for the CAN-IDs         [boolean]
---help, -h       Show help                                           [boolean]
+-f, --file           Hex file to flash                     [string] [required]
+-i, --iface          CAN interface to use           [string] [default: "can0"]
+-p, --partno         Specific AVR device like in avrdude   [string] [required]
+-m, --mcuid          ID of the MCU bootloader              [string] [required]
+-e                   Erase whole flash before flashing new data      [boolean]
+-V                   Do not verify                                   [boolean]
+-r                   Read flash and save to given file (no flashing!),
+                     optional with maximum address to read until      [string]
+-F                   Force flashing, even if the bootloader version
+                     missmatched                                     [boolean]
+-R, --reset          CAN message to send on startup to reset the MCU
+                     (<can_id>#{hex_data})                            [string]
+    --can-id-mcu     CAN-ID for messages from MCU to remote
+                                                 [string] [default: 536870657]
+    --can-id-remote  CAN-ID for messages from remote to MCU
+                                                 [string] [default: 536870658]
+    --sff            Use Standad Frame Format (SFF) instead of the default
+                     Extended Frame Format (EFF) for the CAN-IDs     [boolean]
+-v, --verbose        Enable verbose logging output                   [boolean]
+-h, --help           Show help                                       [boolean]
 ```
 
 Examples:
@@ -75,4 +76,4 @@ npx mcp-can-boot-flash-app -r -f - -p m328p -m 0x0042
 
 [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
-Copyright (C) 2020-2022 Peter Müller <peter@crycode.de> [https://crycode.de](https://crycode.de)
+Copyright (C) 2020-2023 Peter Müller <peter@crycode.de> [https://crycode.de](https://crycode.de)
