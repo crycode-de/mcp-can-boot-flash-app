@@ -21,12 +21,12 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v3
 
-            - name: Use Node.js 14.x
-              uses: actions/setup-node@v1
+            - name: Use Node.js 18.x
+              uses: actions/setup-node@v3
               with:
-                  node-version: 14.x
+                  node-version: 18.x
 
             - name: Install dependencies
               run: npm ci
@@ -47,12 +47,12 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v2
+              uses: actions/checkout@v3
 
-            - name: Use Node.js 14.x
-              uses: actions/setup-node@v1
+            - name: Use Node.js 18.x
+              uses: actions/setup-node@v3
               with:
-                  node-version: 14.x
+                  node-version: 18.x
 
             - name: Extract the version and commit body from the tag
               id: extract_release
@@ -60,12 +60,11 @@ jobs:
               run: |
                   VERSION="${{ github.ref }}"
                   VERSION=${VERSION##*/v}
-                  echo "::set-output name=VERSION::$VERSION"
-                  BODY=$(git show -s --format=%b)
-                  BODY="${BODY//'%'/'%25'}"
-                  BODY="${BODY//$'\n'/'%0A'}"
-                  BODY="${BODY//$'\r'/'%0D'}"
-                  echo "::set-output name=BODY::$BODY"
+                  echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+                  git show -s --format=%b > .gh-release-notes.txt
+
+            - name: Create package
+              run: npm pack
 
             - name: Publish package to npm
               run: |
@@ -73,13 +72,14 @@ jobs:
                   npm publish
 
             - name: Create Github Release
-              uses: actions/create-release@v1
+              uses: softprops/action-gh-release@v1
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
               with:
-                  tag_name: ${{ github.ref }}
-                  release_name: Release v${{ steps.extract_release.outputs.VERSION }}
-                  draft: false
+                  body_path: .gh-release-notes.txt
+                  name: Release v${{ steps.extract_release.outputs.VERSION }}
                   # Prerelease versions create prereleases on Github
                   prerelease: ${{ contains(steps.extract_release.outputs.VERSION, '-') }}
-                  body: ${{ steps.extract_release.outputs.BODY }}
+                  generate_release_notes: true
+                  files: |
+                      mcp-can-boot-flash-app-${{ steps.extract_release.outputs.VERSION }}.tgz
