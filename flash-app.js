@@ -45,8 +45,6 @@ const STATE_INIT     = 0;
 const STATE_FLASHING = 1;
 const STATE_READING  = 2;
 
-const BOOTLOADER_SIZE_BYTES  = 4096;
-
 class FlashApp {
 
   constructor () {
@@ -297,7 +295,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             if (this.doRead) {
               console.log('Got flash ready message, reading flash ...');
               // determine read size (default to full progmem size)
-              var readSizeBytes = this.deviceFlashSize - BOOTLOADER_SIZE_BYTES;
+              var readSizeBytes = this.deviceFlashSize;
               if (this.args.r) {
                 readSizeBytes = this.args.r;// user specified max read address
               }
@@ -473,7 +471,14 @@ https://github.com/crycode-de/mcp-can-boot`)
               this.sendStartApp();
               return;
             } else {
-              // when reading whole flash this is expected
+              // when reading whole flash this error is expected.
+
+              // since we don't know the size of the bootloader section a priori,
+              // we need to increment the read progress by what ever remains to
+              // make it reach 100%
+              let bootloaderSize = this.deviceFlashSize - this.readDataArr.length;
+              this.progressIncrement(bootloaderSize);
+
               this.readDone();
             }
 
