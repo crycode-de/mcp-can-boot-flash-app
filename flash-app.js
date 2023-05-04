@@ -172,7 +172,7 @@ https://github.com/crycode-de/mcp-can-boot`)
 
     this.doVerify = this.doRead ? false : !this.args.V; // if we are just reading, we cannot verify
 
-    // det default time for ping, if ping is set but without a time
+    // get default time for ping, if ping is set but without a time
     if (Object.prototype.hasOwnProperty.call(this.args, 'ping') && typeof this.args.ping !== 'number') {
       this.args.ping = CAN_PING_INTERVAL_DEFAULT;
     }

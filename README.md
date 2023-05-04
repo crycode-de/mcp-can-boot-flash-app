@@ -4,7 +4,6 @@
 
 [![NPM version](https://img.shields.io/npm/v/mcp-can-boot-flash-app.svg)](https://www.npmjs.com/package/mcp-can-boot-flash-app)
 [![Downloads](https://img.shields.io/npm/dm/mcp-can-boot-flash-app.svg)](https://www.npmjs.com/package/mcp-can-boot-flash-app)
-[![Dependency Status](https://img.shields.io/david/crycode-de/mcp-can-boot-flash-app.svg)](https://david-dm.org/crycode-de/mcp-can-boot-flash-app)
 
 [![NPM](https://nodei.co/npm/mcp-can-boot-flash-app.png?downloads=true)](https://nodei.co/npm/mcp-can-boot-flash-app/)
 

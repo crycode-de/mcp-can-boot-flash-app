@@ -1,9 +1,10 @@
 # MCP-CAN-Boot Flash-App Changelog
 
-## WIP
+## v2.2.1 2023-05-04
 
-* Added progress bars
-* Added verbose option
+* Added support for sending ping messages (usefull if the bootloader uses bitrate detection)
+* Added progress bars (thanks to Dan Hankewycz [#2](https://github.com/crycode-de/mcp-can-boot-flash-app/pull/2))
+* Added verbose option (thanks to Dan Hankewycz [#2](https://github.com/crycode-de/mcp-can-boot-flash-app/pull/2))
 * Updated dependencies
 
 ## v2.1.1 2022-07-05
