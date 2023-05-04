@@ -293,29 +293,14 @@ https://github.com/crycode-de/mcp-can-boot`)
           case CMD_FLASH_READY:
             // flash is ready for first data, read or erase...
             if (this.doRead) {
-              console.log('Got flash ready message, reading flash ...');
-              // determine read size (default to full progmem size)
-              var readSizeBytes = this.deviceFlashSize;
-              if (this.args.r) {
-                readSizeBytes = this.args.r;// user specified max read address
-              }
-              this.progressStart(readSizeBytes, 0);
-              this.state = STATE_READING;
-              this.can.send({
-                id: this.args.canIdRemote,
-                ext: !this.args.sff,
-                rtr: false,
-                data: Buffer.from([
-                  this.mcuId[0],
-                  this.mcuId[1],
-                  CMD_FLASH_READ,
-                  0x00,
-                  0x00,
-                  0x00,
-                  0x00,
-                  0x00
-                ])
-              });
+              console.log('Querying bootloader size ...');
+              // determine size of bootloader section by trying to set the
+              // flash address to 0xFFFFFFFF (huge address that's out of bounds).
+              // bootloader will repond with CMD_FLASH_ADDRESS_ERROR that will
+              // inform us of FLASHEND_BL (last address of the program space).
+              // we can use that value and the known size of the chip's flash
+              // memory to determine the bootloader size.
+              this.sendSetFlashAddress(0xFFFFFFFF);
             } else if (this.doErase) {
               console.log('Got flash ready message, erasing flash ...');
               this.can.send({
@@ -338,6 +323,50 @@ https://github.com/crycode-de/mcp-can-boot`)
               console.log('Got flash ready message, begin flashing ...');
               this.state = STATE_FLASHING;
               this.onFlashReady(msg.data);
+            }
+            break;
+
+          case CMD_FLASH_ADDRESS_ERROR:
+            if (this.doRead) {
+              // get FLASHEND_BL from error response (last address of program space).
+              // use it to recover the size of the program/bootloader sections.
+              const flashendBL = 
+                (msg.data[4] << 24) |
+                (msg.data[5] << 16) |
+                (msg.data[6] << 8) |
+                msg.data[7];
+              const progSize = flashendBL + 1;
+              const blSize = this.deviceFlashSize - progSize;
+              console.log(`Bootloader size: ${blSize} bytes`);
+
+              // determine read size (default to full program memory size)
+              let readSizeBytes = progSize;
+              if (this.args.r) {
+                if (this.args.r >= progSize) {
+                  console.warn(`WARNING: read size of ${this.args.r} exceeds program memory size of ${progSize}`);
+                } else {
+                  readSizeBytes = this.args.r;// user specified max read address
+                }
+              }
+              this.progressStart(readSizeBytes, 0);
+              this.state = STATE_READING;
+              this.can.send({
+                id: this.args.canIdRemote,
+                ext: !this.args.sff,
+                rtr: false,
+                data: Buffer.from([
+                  this.mcuId[0],
+                  this.mcuId[1],
+                  CMD_FLASH_READ,
+                  0x00,
+                  0x00,
+                  0x00,
+                  0x00,
+                  0x00
+                ])
+              });
+            } else {
+              console.warn('WARNING: unexpected CMD_FLASH_ADDRESS_ERROR in STATE_INIT');
             }
             break;
 
@@ -471,14 +500,7 @@ https://github.com/crycode-de/mcp-can-boot`)
               this.sendStartApp();
               return;
             } else {
-              // when reading whole flash this error is expected.
-
-              // since we don't know the size of the bootloader section a priori,
-              // we need to increment the read progress by what ever remains to
-              // make it reach 100%
-              let bootloaderSize = this.deviceFlashSize - this.readDataArr.length;
-              this.progressIncrement(bootloaderSize);
-
+              // when reading whole flash this is expected
               this.readDone();
             }
 
@@ -577,6 +599,27 @@ https://github.com/crycode-de/mcp-can-boot`)
     });
   }
 
+  sendSetFlashAddress(addr) {
+    if (this.args.verbose) {
+      console.log(`Setting flash address to ${this.hexString(addr)} ...`);
+    }
+    this.can.send({
+      id: this.args.canIdRemote,
+      ext: !this.args.sff,
+      rtr: false,
+      data: Buffer.from([
+        this.mcuId[0],
+        this.mcuId[1],
+        CMD_FLASH_SET_ADDRESS,
+        0x00,
+        (addr >> 24) & 0xFF,
+        (addr >> 16) & 0xFF,
+        (addr >> 8) & 0xFF,
+        addr & 0xFF
+      ])
+    });
+  }
+
   onFlashReady (msgData) {
     const curAddrRemote = msgData[7] + (msgData[6] << 8) + (msgData[5] << 16) + (msgData[4] << 24);
     //console.log(`Remote flash address is ${this.hexString(curAddrRemote)}`);
@@ -642,21 +685,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     if (this.curAddr !== curAddrRemote) {
       // need to set the address to flash...
       console.log(`Setting flash address to ${this.hexString(this.curAddr, 4)} ...`);
-      this.can.send({
-        id: this.args.canIdRemote,
-        ext: !this.args.sff,
-        rtr: false,
-        data: Buffer.from([
-          this.mcuId[0],
-          this.mcuId[1],
-          CMD_FLASH_SET_ADDRESS,
-          0x00,
-          (this.curAddr >> 24) & 0xFF,
-          (this.curAddr >> 16) & 0xFF,
-          (this.curAddr >> 8) & 0xFF,
-          this.curAddr & 0xFF
-        ])
-      });
+      this.sendSetFlashAddress(this.curAddr);
       return;
     }
 
