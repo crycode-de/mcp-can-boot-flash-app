@@ -1,5 +1,9 @@
 # MCP-CAN-Boot Flash-App Changelog
 
+## v2.2.2 2023-05-11
+
+* Added support for ATmega32U4 mcu
+
 ## v2.2.1 2023-05-04
 
 * Added support for sending ping messages (usefull if the bootloader uses bitrate detection)

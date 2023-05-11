@@ -814,6 +814,12 @@ https://github.com/crycode-de/mcp-can-boot`)
         this.deviceSignature = [0x1E, 0x95, 0x02];
         this.deviceFlashSize = 32 * 1024;
         break;
+      case 'm32u4':
+      case 'mega32u4':
+      case 'atmega32u4':
+        this.deviceSignature = [0x1E, 0x95, 0x87];
+        this.deviceFlashSize = 32 * 1024;
+        break;
       case 'm328':
       case 'mega328':
       case 'atmega328':
