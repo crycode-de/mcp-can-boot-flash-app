@@ -6,7 +6,7 @@
  * Flash application for MCP-CAN-Boot, a CAN bus bootloader for
  * AVR microcontrollers attached to an MCP2515 CAN controller.
  *
- * Copyright (C) 2020-2023 Peter Müller <peter@crycode.de> (https://crycode.de)
+ * Copyright (C) 2020-2024 Peter Müller <peter@crycode.de> (https://crycode.de)
  * License: CC BY-NC-SA 4.0
  */
 
@@ -830,6 +830,12 @@ https://github.com/crycode-de/mcp-can-boot`)
       case 'mega328p':
       case 'atmega328p':
         this.deviceSignature = [0x1E, 0x95, 0x0F];
+        this.deviceFlashSize = 32 * 1024;
+        break;
+      case 'm328pb':
+      case 'mega328pb':
+      case 'atmega328pb':
+        this.deviceSignature = [0x1E, 0x95, 0x16];
         this.deviceFlashSize = 32 * 1024;
         break;
       case 'm64':
