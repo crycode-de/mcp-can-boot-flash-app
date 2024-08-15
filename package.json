@@ -1,6 +1,6 @@
 {
   "name": "mcp-can-boot-flash-app",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Flash application for the MCP-CAN-Boot CAN bus bootloader",
   "main": "flash-app.js",
   "bin": {
@@ -32,15 +32,15 @@
   "license": "CC-BY-NC-SA-4.0",
   "dependencies": {
     "cli-progress": "^3.12.0",
-    "nrf-intel-hex": "^1.3.0",
-    "socketcan": "^3.0.0",
+    "nrf-intel-hex": "^1.4.0",
+    "socketcan": "^4.0.4",
     "yargs": "^17.7.2"
   },
   "engines": {
     "node": ">=12"
   },
   "devDependencies": {
-    "eslint": "^8.39.0"
+    "eslint": "^8.57.0"
   },
   "scripts": {
     "lint": "eslint flash-app.js"

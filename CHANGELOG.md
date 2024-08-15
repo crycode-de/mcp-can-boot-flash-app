@@ -1,8 +1,9 @@
 # MCP-CAN-Boot Flash-App Changelog
 
-## v2.2.3 2024-08-13
+## v2.2.3 2024-08-15
 
 * Added support for ATmega328PB mcu
+* Updated dependencies (Node 20.x is now supported)
 
 ## v2.2.2 2023-05-11
 

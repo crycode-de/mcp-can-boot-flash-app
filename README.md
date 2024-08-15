@@ -25,20 +25,20 @@ More information about the bootloader are available in the official repository: 
 
 No need to install: Just run the flash-app using `npx` (this will take a moment):
 
-```
+```sh
 npx mcp-can-boot-flash-app [...]
 ```
 
 Or install it globally and run it if you need it more often (recommended):
 
-```
+```sh
 npm install -g mcp-can-boot-flash-app
 mcp-can-boot-flash-app [...]
 ```
 
 ## Flash-App parameters
 
-```
+```plain
 -f, --file           Hex file to flash                     [string] [required]
 -i, --iface          CAN interface to use           [string] [default: "can0"]
 -p, --partno         Specific AVR device like in avrdude   [string] [required]
@@ -66,7 +66,7 @@ mcp-can-boot-flash-app [...]
 
 Examples:
 
-```
+```sh
 npx mcp-can-boot-flash-app -f firmware.hex -p m1284p -m 0x0042
 npx mcp-can-boot-flash-app -f firmware.hex -p m1284p -m 0x0042 --reset 020040FF#4201FA
 npx mcp-can-boot-flash-app -f firmware.hex -p m1284p -m 0x0042 --reset 020040FF#4201FA --ping 75
