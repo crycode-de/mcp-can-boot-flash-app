@@ -42,6 +42,10 @@
   "devDependencies": {
     "eslint": "^8.39.0"
   },
+  "optionalDependencies": {
+    "socketcan": "^3.0.0",
+    "@csllc/cs-pcan-usb": "^0.3.3"
+  },
   "scripts": {
     "lint": "eslint flash-app.js"
   }

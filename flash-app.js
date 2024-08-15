@@ -12,9 +12,11 @@
 
 const fs = require('fs');
 const yargs = require('yargs');
-const socketcan = require('socketcan');
 const MemoryMap = require('nrf-intel-hex');
 const cliProgress = require('cli-progress');
+const os = require('os');
+
+const CanFactory = require('./can-factory');
 
 const BOOTLOADER_CMD_VERSION = 0x01;
 
@@ -66,17 +68,26 @@ class FlashApp {
         alias: 'i',
         description: 'CAN interface to use',
         type: 'string',
-        default: 'can0',
-        requiresArg: true
-      })
+        default: os.platform() === 'linux' ? 'can0' : undefined,
+        requiresArg: os.platform() === 'linux'
+      });
 
-      .option('partno', {
-        alias: 'p',
-        description: 'Specific AVR device like in avrdude',
-        type: 'string',
-        demandOption: true,
+    if (os.platform() === 'win32')
+      this.args = this.args.option('bitrate', {
+        alias: 'b',
+        description: 'CAN interface bitrate',
+        type: 'number',
+        default: '500',
         requiresArg: true
-      })
+      });
+
+    this.args = this.args.option('partno', {
+      alias: 'p',
+      description: 'Specific AVR device like in avrdude',
+      type: 'string',
+      demandOption: true,
+      requiresArg: true
+    })
 
       .option('mcuid', {
         alias: 'm',
@@ -104,7 +115,7 @@ class FlashApp {
       })
 
       .option('F', {
-        description: 'Force flashing, even if the bootloader version missmatched',
+        description: 'Force flashing, even if the bootloader version mismatched',
         type: 'boolean'
       })
 
@@ -132,7 +143,7 @@ class FlashApp {
       })
 
       .option('sff', {
-        description: 'Use Standad Frame Format (SFF) instead of the default Extended Frame Format (EFF) for the CAN-IDs',
+        description: 'Use Standard Frame Format (SFF) instead of the default Extended Frame Format (EFF) for the CAN-IDs',
         type: 'boolean'
       })
 
@@ -182,98 +193,105 @@ https://github.com/crycode-de/mcp-can-boot`)
     this.deviceFlashSize = 0;
     this.loadDeviceInfo(this.args.partno);
 
-    if (!this.doRead) {
-      // load from file if we are not only reading the flash
-      if (!fs.existsSync(this.args.file)) {
-        console.log(`Input file ${this.args.file} does not exist!`);
-        this.exit(1);
-      }
-      const intelHexString = fs.readFileSync(this.args.file, 'latin1');
-      this.memMap = MemoryMap.fromHex(intelHexString);
-
-    } else {
-      // we are only reading the flash... init an empty memory map
-      this.memMap = new MemoryMap();
-
-      // check if output file exists
-      if (this.args.file !== '-' && fs.existsSync(this.args.file)) {
-        console.log(`Output file ${this.args.file} already exists!`);
-        this.exit(1);
-      }
-    }
-
-    this.memMapKeys = this.memMap.keys(); // load all keys of the memory map
-    this.memMapCurrentKey = null; // set current key to null to begin new key on flash ready
-    this.memMapCurrentDataIdx = 0;
-    this.memMapTotalBytes = 0;
-    // compute input file size in bytes
-    for (const block of this.memMap.values()) {
-      this.memMapTotalBytes += block.length;
-    }
-
-    this.curAddr = 0x0000; // current flash address
-
-    this.readDataArr = [];
-
-    this.can = socketcan.createRawChannel(this.args.iface, true);
-    this.can.addListener('onMessage', this.handleCanMsg.bind(this));
-    this.can.start();
-
-    // send can message to reset the mcu?
-    if (this.args.reset) {
-      const [canIdStr, dataStr] = this.args.reset.split('#');
-
-      const canId = parseInt(canIdStr, 16);
-      if ((canIdStr.length !== 3 && canIdStr.length !== 8) || isNaN(canId)) {
-        console.log(`Reset message format error!\nThe can_id is not valid. A three digits standard frame or eight digits extended frame hex id must be provided.`);
-        this.exit(1);
-      }
-
-      const data = dataStr ? dataStr.match(/../g).map((d) => {
-        const n = parseInt(d, 16);
-        if (isNaN(n)) {
-          console.log(`Reset message format error!\nThe data bytes must be provided as hex numbers.`);
-          this.exit(1);
+    (async () => {
+      if (!this.doRead) {
+        // load from file if we are not only reading the flash
+        if (!fs.existsSync(this.args.file)) {
+          console.log(`Input file ${this.args.file} does not exist!`);
+          await this.exit(1);
         }
-        return n;
-      }) : [];
+        const intelHexString = fs.readFileSync(this.args.file, 'latin1');
+        this.memMap = MemoryMap.fromHex(intelHexString);
 
-      this.can.send({
-        id: canId,
-        ext: (canIdStr.length > 3),
-        rtr: false,
-        data: Buffer.from(data)
-      });
+      } else {
+        // we are only reading the flash... init an empty memory map
+        this.memMap = new MemoryMap();
 
-      console.log(`Reset message send to the MCU.`);
-    }
+        // check if output file exists
+        if (this.args.file !== '-' && fs.existsSync(this.args.file)) {
+          console.log(`Output file ${this.args.file} already exists!`);
+          await this.exit(1);
+        }
+      }
 
-    // send ping messages?
-    if (this.args.ping) {
-      console.log(`Sending a ping message every ${this.args.pings} ms.`);
-      this.pingInterval = setInterval(() => {
-        this.can.send({
-          id: this.args.canIdRemote,
-          ext: !this.args.sff,
+      this.memMapKeys = this.memMap.keys(); // load all keys of the memory map
+      this.memMapCurrentKey = null; // set current key to null to begin new key on flash ready
+      this.memMapCurrentDataIdx = 0;
+      this.memMapTotalBytes = 0;
+      // compute input file size in bytes
+      for (const block of this.memMap.values()) {
+        this.memMapTotalBytes += block.length;
+      }
+
+      this.curAddr = 0x0000; // current flash address
+
+      this.readDataArr = [];
+
+      try {
+        this.can = CanFactory.create(this.args);
+        await this.can.open();
+      } catch (e) {
+        console.log(`Failed to initialize CAN interface:`, e);
+        await this.exit(1);
+      }
+      this.can.onMessage(this.handleCanMsg.bind(this));
+
+      // send can message to reset the mcu?
+      if (this.args.reset) {
+        const [canIdStr, dataStr] = this.args.reset.split('#');
+
+        const canId = parseInt(canIdStr, 16);
+        if ((canIdStr.length !== 3 && canIdStr.length !== 8) || isNaN(canId)) {
+          console.log(`Reset message format error!\nThe can_id is not valid. A three digits standard frame or eight digits extended frame hex id must be provided.`);
+          await this.exit(1);
+        }
+
+        const data = dataStr ? dataStr.match(/../g).map((d) => {
+          const n = parseInt(d, 16);
+          if (isNaN(n)) {
+            console.log(`Reset message format error!\nThe data bytes must be provided as hex numbers.`);
+            this.exit(1);
+          }
+          return n;
+        }) : [];
+
+        await this.can.send({
+          id: canId,
+          ext: (canIdStr.length > 3),
           rtr: false,
-          data: Buffer.from([
-            this.mcuId[0],
-            this.mcuId[1],
-            CMD_PING,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00
-          ])
+          data: Buffer.from(data)
         });
-      }, this.args.ping);
-    }
 
-    console.log(`Waiting for bootloader start message for MCU ID ${this.hexString(this.args.mcuid, 4)} ...`);
+        console.log(`Reset message send to the MCU.`);
+      }
+
+      // send ping messages?
+      if (this.args.ping) {
+        console.log(`Sending a ping message every ${this.args.pings} ms.`);
+        this.pingInterval = setInterval(async () => {
+          await this.can.send({
+            id: this.args.canIdRemote,
+            ext: !this.args.sff,
+            rtr: false,
+            data: Buffer.from([
+              this.mcuId[0],
+              this.mcuId[1],
+              CMD_PING,
+              0x00,
+              0x00,
+              0x00,
+              0x00,
+              0x00
+            ])
+          });
+        }, this.args.ping);
+      }
+
+      console.log(`Waiting for bootloader start message for MCU ID ${this.hexString(this.args.mcuid, 4)} ...`);
+    })();
   }
 
-  handleCanMsg (msg) {
+  async handleCanMsg(msg) {
     if (msg.data.length !== 8) return;
     if (msg.id !== this.args.canIdMcu) return;
 
@@ -290,7 +308,7 @@ https://github.com/crycode-de/mcp-can-boot`)
           case CMD_BOOTLOADER_START:
             // check device signature
             if (msg.data[4] !== this.deviceSignature[0] || msg.data[5] !== this.deviceSignature[1] || msg.data[6] !== this.deviceSignature[2]) {
-              console.log('Error: Got bootloader start message but device signature missmatched!');
+              console.log('Error: Got bootloader start message but device signature mismatched!');
               console.log(`Expected ${this.hexString(this.deviceSignature[0])} ${this.hexString(this.deviceSignature[1])} ${this.hexString(this.deviceSignature[2])} for ${this.args.partno}, got ${this.hexString(msg.data[4])} ${this.hexString(msg.data[5])} ${this.hexString(msg.data[6])}`);
               return;
             }
@@ -313,7 +331,7 @@ https://github.com/crycode-de/mcp-can-boot`)
               console.log(`Stopped sending of ping messages.`);
             }
             this.flashStartTs = Date.now();
-            this.can.send({
+            await this.can.send({
               id: this.args.canIdRemote,
               ext: !this.args.sff,
               rtr: false,
@@ -336,14 +354,14 @@ https://github.com/crycode-de/mcp-can-boot`)
               console.log('Querying bootloader size ...');
               // determine size of bootloader section by trying to set the
               // flash address to 0xFFFFFFFF (huge address that's out of bounds).
-              // bootloader will repond with CMD_FLASH_ADDRESS_ERROR that will
+              // bootloader will respond with CMD_FLASH_ADDRESS_ERROR that will
               // inform us of FLASHEND_BL (last address of the program space).
               // we can use that value and the known size of the chip's flash
               // memory to determine the bootloader size.
-              this.sendSetFlashAddress(0xFFFFFFFF);
+              await this.sendSetFlashAddress(0xFFFFFFFF);
             } else if (this.doErase) {
               console.log('Got flash ready message, erasing flash ...');
-              this.can.send({
+              await this.can.send({
                 id: this.args.canIdRemote,
                 ext: !this.args.sff,
                 rtr: false,
@@ -362,7 +380,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             } else {
               console.log('Got flash ready message, begin flashing ...');
               this.state = STATE_FLASHING;
-              this.onFlashReady(msg.data);
+              await this.onFlashReady(msg.data);
             }
             break;
 
@@ -390,7 +408,7 @@ https://github.com/crycode-de/mcp-can-boot`)
               }
               this.progressStart(readSizeBytes, 0);
               this.state = STATE_READING;
-              this.can.send({
+              await this.can.send({
                 id: this.args.canIdRemote,
                 ext: !this.args.sff,
                 rtr: false,
@@ -436,13 +454,13 @@ https://github.com/crycode-de/mcp-can-boot`)
             this.progressIncrement(byteCount);
             this.curAddr += byteCount;
             this.memMapCurrentDataIdx += byteCount;
-            this.onFlashReady(msg.data);
+            await this.onFlashReady(msg.data);
             break;
 
           case CMD_START_APP:
             console.log(`Flash done in ${(Date.now() - this.flashStartTs)} ms.`);
             console.log('MCU is starting the app. :-)');
-            this.exit(0);
+            await this.exit(0);
             break;
 
           default:
@@ -462,7 +480,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             this.memMapCurrentKey = null; // set current key to null to begin new key on flash read
             this.memMapCurrentDataIdx = 0;
 
-            this.readForVerify ();
+            await this.readForVerify();
 
             break;
 
@@ -473,7 +491,7 @@ https://github.com/crycode-de/mcp-can-boot`)
             if (this.curAddr & 0b00011111 !== addrPart) {
               console.log('Got an unexpected address of read data from MCU!');
               console.log('Will now abort and exit the bootloader ...');
-              this.sendStartApp();
+              await this.sendStartApp();
               return;
             }
 
@@ -489,14 +507,14 @@ https://github.com/crycode-de/mcp-can-boot`)
                   && this.memMap.get(this.memMapCurrentKey)[this.memMapCurrentDataIdx] !== msg.data[4+i]) {
                   console.log(`ERROR: Verify failed at ${this.hexString(this.curAddr)}!`);
                   console.log('Trying to start the app nevertheless ...');
-                  this.sendStartApp();
+                  await this.sendStartApp();
                   return;
                 }
                 this.curAddr++;
                 this.memMapCurrentDataIdx++;
               }
 
-              this.readForVerify();
+              await this.readForVerify();
 
             } else {
               // read whole flash
@@ -508,11 +526,11 @@ https://github.com/crycode-de/mcp-can-boot`)
 
               if (this.args.r > 0 && this.curAddr > this.args.r) {
                 // reached max read address...
-                this.readDone();
+                await this.readDone();
                 return;
               }
               // request next address
-              this.can.send({
+              await this.can.send({
                 id: this.args.canIdRemote,
                 ext: !this.args.sff,
                 rtr: false,
@@ -537,18 +555,18 @@ https://github.com/crycode-de/mcp-can-boot`)
             if (this.doVerify) {
               // hitting the end at verify must be an error...
               console.log('ERROR: Reading flash failed during verify!');
-              this.sendStartApp();
+              await this.sendStartApp();
               return;
             } else {
               // when reading whole flash this is expected
-              this.readDone();
+              await this.readDone();
             }
 
             break;
 
           case CMD_START_APP:
             console.log('MCU is starting the app. :-)');
-            this.exit(0);
+            await this.exit(0);
             break;
 
           default:
@@ -559,7 +577,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     }
   }
 
-  readForVerify () {
+  async readForVerify() {
     // check memory map and get next map key if we reached the end
     if (!this.memMap.get(this.memMapCurrentKey) || this.memMap.get(this.memMapCurrentKey)[this.memMapCurrentDataIdx] === undefined) {
       // no more data... goto next memory map key...
@@ -568,7 +586,7 @@ https://github.com/crycode-de/mcp-can-boot`)
         // all keys done... verify complete
         this.progressStop();
         console.log(`Flash and verify done in ${(Date.now() - this.flashStartTs)} ms.`);
-        this.sendStartApp();
+        await this.sendStartApp();
         return;
       }
 
@@ -579,7 +597,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     }
 
     // request next address
-    this.can.send({
+    await this.can.send({
       id: this.args.canIdRemote,
       ext: !this.args.sff,
       rtr: false,
@@ -596,7 +614,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     });
   }
 
-  readDone () {
+  async readDone() {
     this.progressStop();
 
     // create memory map
@@ -617,12 +635,12 @@ https://github.com/crycode-de/mcp-can-boot`)
     console.log(`Reading flash done in ${Date.now() - this.flashStartTs} ms.`);
 
     // start the main application at the MCU
-    this.sendStartApp();
+    await this.sendStartApp();
   }
 
-  sendStartApp () {
+  async sendStartApp() {
     console.log('Starting the app on the MCU ...');
-    this.can.send({
+    await this.can.send({
       id: this.args.canIdRemote,
       ext: !this.args.sff,
       rtr: false,
@@ -639,11 +657,11 @@ https://github.com/crycode-de/mcp-can-boot`)
     });
   }
 
-  sendSetFlashAddress(addr) {
+  async sendSetFlashAddress(addr) {
     if (this.args.verbose) {
       console.log(`Setting flash address to ${this.hexString(addr)} ...`);
     }
-    this.can.send({
+    await this.can.send({
       id: this.args.canIdRemote,
       ext: !this.args.sff,
       rtr: false,
@@ -660,7 +678,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     });
   }
 
-  onFlashReady (msgData) {
+  async onFlashReady(msgData) {
     const curAddrRemote = msgData[7] + (msgData[6] << 8) + (msgData[5] << 16) + (msgData[4] << 24);
     //console.log(`Remote flash address is ${this.hexString(curAddrRemote)}`);
 
@@ -674,7 +692,7 @@ https://github.com/crycode-de/mcp-can-boot`)
         if (this.doVerify) {
           // we want to verify... send flash done verify and set own state to read
           this.state = STATE_READING;
-          this.can.send({
+          await this.can.send({
             id: this.args.canIdRemote,
             ext: !this.args.sff,
             rtr: false,
@@ -692,7 +710,7 @@ https://github.com/crycode-de/mcp-can-boot`)
 
         } else {
           // we don't want to verify... send flash done to start the app
-          this.can.send({
+          await this.can.send({
             id: this.args.canIdRemote,
             ext: !this.args.sff,
             rtr: false,
@@ -725,7 +743,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     if (this.curAddr !== curAddrRemote) {
       // need to set the address to flash...
       console.log(`Setting flash address to ${this.hexString(this.curAddr, 4)} ...`);
-      this.sendSetFlashAddress(this.curAddr);
+      await this.sendSetFlashAddress(this.curAddr);
       return;
     }
 
@@ -759,7 +777,7 @@ https://github.com/crycode-de/mcp-can-boot`)
     if (this.args.verbose) {
       console.log(`Sending flash data ${this.hexString(this.curAddr, 4)} ...`);
     }
-    this.can.send({
+    await this.can.send({
       id: this.args.canIdRemote,
       ext: !this.args.sff,
       rtr: false,
@@ -877,13 +895,13 @@ https://github.com/crycode-de/mcp-can-boot`)
   /**
    * Do a clean exit of the flash app.
    */
-  exit (code) {
+  async exit(code) {
     try {
       if (this.pingInterval) {
         clearInterval(this.pingInterval);
       }
       if (this.can) {
-        this.can.stop();
+        await this.can.close();
       }
     } catch (e) {
       console.warn('Error at exit cleanup:', e);
